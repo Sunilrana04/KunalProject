@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
-  Plus, Search, Edit3, Trash2, X, Star, Upload, Save, CheckCircle, 
-  Image as ImageIcon, Camera, AlertCircle, Loader2 
+  Plus, Search, Edit3, Trash2, X, Star,  Save, CheckCircle, 
+  Image as Camera, AlertCircle, Loader2 
 } from 'lucide-react';
 import { apiService } from '../../services/apiService';
 import type { Profile } from '../../types';
