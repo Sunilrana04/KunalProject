@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
-  Plus, Search, Edit3, Trash2, X, Star,  Save, CheckCircle, 
+  Plus, Search, Edit3, Trash2, X, Star, Upload, Save, CheckCircle, 
   Image as Camera, AlertCircle, Loader2 
 } from 'lucide-react';
 import { apiService } from '../../services/apiService';
