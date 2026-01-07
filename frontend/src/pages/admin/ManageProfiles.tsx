@@ -1,62 +1,62 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import {
-  ArrowLeft,
-  MapPin,
-  Phone,
-  MessageSquare,
-  Share2,
-  Heart,
-  Ruler,
-  Palette,
-  User,
-  Star,
-  Gift,
-  Shield
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { 
+  Plus, Search, Edit3, Trash2, X, Star,  Save, CheckCircle, 
+  Image as  Camera, AlertCircle, Loader2, Heart, Shield, Gift, Users
 } from 'lucide-react';
-import { apiService } from '../services/apiService';
-import type { Profile } from '../types';
-import { useSEO } from '../hooks/useSEO';
+import { apiService } from '../../services/apiService.js';
+import type { Profile } from '../../types.js';
+import { LOCATIONS, COMPLEXIONS } from '../../constants.js';
 
-const ProfileDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [activeImage, setActiveImage] = useState('');
-  const [showContact, setShowContact] = useState(false);
-  const [isFavorited, setIsFavorited] = useState(false);
-  const [feedback, setFeedback] = useState<{ message: string } | null>(null);
+const ManageProfiles: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [currentProfile, setCurrentProfile] = useState<Partial<Profile> | null>(null);
+  const [mainImageFile, setMainImageFile] = useState<File | null>(null);
+  const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [mainPreview, setMainPreview] = useState<string>('');
+  const [galleryPreviews, setGalleryPreviews] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  
+  // ✅ Local state for 4 bio sections
   const [bioSections, setBioSections] = useState({
     aboutMe: '',
     interestsHobbies: '',
     whatIOffer: '',
     valuesPrivacy: ''
   });
+  
+  const mainInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      if (!id) return;
-      try {
-        const data = await apiService.getProfileById(id);
-        setProfile(data);
-        setActiveImage(data.imageUrl);
+    loadProfiles();
+    if (searchParams.get('new') === 'true') {
+      handleAddNew();
+      setSearchParams({});
+    }
+  }, [searchParams]);
 
-        // ✅ Parse description into sections
-        const parsedSections = parseDescription(data.description || '');
-        setBioSections(parsedSections);
+  const loadProfiles = async () => {
+    try {
+      const data = await apiService.getProfiles();
+      setProfiles(data);
+    } catch (err) {
+      console.error('Failed to load profiles:', err);
+    }
+  };
 
-        const favs = localStorage.getItem('favorites');
-        const list = favs ? JSON.parse(favs) : [];
-        setIsFavorited(list.includes(id));
-      } catch (err) {
-        console.error(err);
-        navigate('/search');
-      }
-    };
-
-    fetchProfile();
-  }, [id, navigate]);
+  const filteredProfiles = useMemo(() => {
+    return profiles.filter(p => 
+      p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || false
+    );
+  }, [profiles, searchTerm]);
 
   // ✅ Function to parse description into 4 sections
   const parseDescription = (description: string) => {
@@ -69,376 +69,628 @@ const ProfileDetail: React.FC = () => {
 
     if (!description) return sections;
 
-    // Try different patterns
-    const aboutPatterns = ['About Me:', 'About me:', 'About:', 'About Me'];
-    const interestsPatterns = ['Interests & Hobbies:', 'Interests and Hobbies:', 'Hobbies:', 'Interests:'];
-    const offerPatterns = ['What I Offer:', 'I Offer:', 'What I offer:', 'Offer:'];
-    const valuesPatterns = ['Values & Privacy:', 'Values and Privacy:', 'Values:', 'Privacy:'];
-
-    let aboutIndex = -1, interestsIndex = -1, offerIndex = -1, valuesIndex = -1;
-
-    // Find indices for each section
-    aboutPatterns.forEach(pattern => {
-      const idx = description.indexOf(pattern);
-      if (idx !== -1 && aboutIndex === -1) aboutIndex = idx;
-    });
-
-    interestsPatterns.forEach(pattern => {
-      const idx = description.indexOf(pattern);
-      if (idx !== -1 && interestsIndex === -1) interestsIndex = idx;
-    });
-
-    offerPatterns.forEach(pattern => {
-      const idx = description.indexOf(pattern);
-      if (idx !== -1 && offerIndex === -1) offerIndex = idx;
-    });
-
-    valuesPatterns.forEach(pattern => {
-      const idx = description.indexOf(pattern);
-      if (idx !== -1 && valuesIndex === -1) valuesIndex = idx;
-    });
-
-    // Extract sections
-    if (aboutIndex !== -1) {
-      const endIndex = Math.min(
-        interestsIndex !== -1 ? interestsIndex : Infinity,
-        offerIndex !== -1 ? offerIndex : Infinity,
-        valuesIndex !== -1 ? valuesIndex : Infinity
-      );
-      sections.aboutMe = description.substring(aboutIndex, endIndex !== Infinity ? endIndex : description.length)
-        .replace(/^(About Me:|About me:|About:|About Me)\s*/, '')
-        .trim();
-    }
-
-    if (interestsIndex !== -1) {
-      const endIndex = Math.min(
-        offerIndex !== -1 ? offerIndex : Infinity,
-        valuesIndex !== -1 ? valuesIndex : Infinity
-      );
-      sections.interestsHobbies = description.substring(interestsIndex, endIndex !== Infinity ? endIndex : description.length)
-        .replace(/^(Interests & Hobbies:|Interests and Hobbies:|Hobbies:|Interests:)\s*/, '')
-        .trim();
-    }
-
-    if (offerIndex !== -1) {
-      const endIndex = valuesIndex !== -1 ? valuesIndex : description.length;
-      sections.whatIOffer = description.substring(offerIndex, endIndex)
-        .replace(/^(What I Offer:|I Offer:|What I offer:|Offer:)\s*/, '')
-        .trim();
-    }
-
-    if (valuesIndex !== -1) {
-      sections.valuesPrivacy = description.substring(valuesIndex)
-        .replace(/^(Values & Privacy:|Values and Privacy:|Values:|Privacy:)\s*/, '')
-        .trim();
-    }
-
-    // If no sections found, show full description in About Me
-    if (!sections.aboutMe && !sections.interestsHobbies && !sections.whatIOffer && !sections.valuesPrivacy) {
-      sections.aboutMe = description;
+    // Split by common patterns
+    const lines = description.split('\n');
+    let currentSection = '';
+    
+    for (const line of lines) {
+      if (line.includes('About Me:')) {
+        currentSection = 'aboutMe';
+        sections.aboutMe = line.replace('About Me:', '').trim();
+      } else if (line.includes('Interests & Hobbies:')) {
+        currentSection = 'interestsHobbies';
+        sections.interestsHobbies = line.replace('Interests & Hobbies:', '').trim();
+      } else if (line.includes('What I Offer:')) {
+        currentSection = 'whatIOffer';
+        sections.whatIOffer = line.replace('What I Offer:', '').trim();
+      } else if (line.includes('Values & Privacy:')) {
+        currentSection = 'valuesPrivacy';
+        sections.valuesPrivacy = line.replace('Values & Privacy:', '').trim();
+      } else if (currentSection && line.trim()) {
+        // Append to current section
+        sections[currentSection as keyof typeof sections] += ' ' + line.trim();
+      }
     }
 
     return sections;
   };
 
-  const gallery = useMemo(() => {
-    if (!profile) return [];
-    return [profile.imageUrl, ...(profile.galleryImages || [])];
-  }, [profile]);
-
-  useSEO({
-    title: profile ? `${profile.name} - ${profile.age} Yrs` : 'Loading...',
-    description: profile ? profile.description : 'Profile detail'
-  });
-
-  const handleContactClick = async () => {
-    if (!id || showContact) return;
-    await apiService.incrementContactClick(id);
-    setShowContact(true);
+  const handleAddNew = () => {
+    setCurrentProfile({
+      name: '',
+      age: 18,
+      height: "5'4\"",
+      complexion: 'Medium',
+      location: LOCATIONS[0],
+      imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=600',
+      galleryImages: [],
+      description: '',
+      contactInfo: '',
+      isFeatured: false,
+      contactClicks: 0,
+      createdAt: new Date().toISOString()
+    });
+    
+    // Reset bio sections
+    setBioSections({
+      aboutMe: '',
+      interestsHobbies: '',
+      whatIOffer: '',
+      valuesPrivacy: ''
+    });
+    
+    setMainPreview('');
+    setGalleryPreviews([]);
+    setMainImageFile(null);
+    setGalleryFiles([]);
+    setErrorMessage(null);
+    setIsEditing(true);
   };
 
-  const toggleFavorite = () => {
-    const favs = localStorage.getItem('favorites');
-    let list = favs ? JSON.parse(favs) : [];
-    list = list.includes(id) ? list.filter((f: string) => f !== id) : [...list, id];
-    localStorage.setItem('favorites', JSON.stringify(list));
-    setIsFavorited(!isFavorited);
-    setFeedback({ message: isFavorited ? 'Removed from favorites' : 'Added to favorites' });
-    setTimeout(() => setFeedback(null), 2000);
+  const handleEdit = (profile: Profile) => {
+    setCurrentProfile({ ...profile });
+    
+    // ✅ Parse existing description into 4 sections
+    const parsedSections = parseDescription(profile.description || '');
+    setBioSections(parsedSections);
+    
+    setMainPreview(profile.imageUrl);
+    setGalleryPreviews(profile.galleryImages || []);
+    setMainImageFile(null);
+    setGalleryFiles([]);
+    setErrorMessage(null);
+    setIsEditing(true);
   };
 
-  // ✅ IMPROVED WhatsApp function with better formatting
-  const openWhatsApp = () => {
-    if (!profile?.contactInfo) return;
+  const proceedDelete = async (id: string) => {
+    try {
+      await apiService.deleteProfile(id);
+      await loadProfiles();
+      setDeletingId(null);
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
+    } catch (err) {
+      setErrorMessage("Could not delete profile. Please try again.");
+    }
+  };
+
+  const handleMainPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsProcessingImage(true);
+      setMainImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setMainPreview(reader.result as string);
+        setIsProcessingImage(false);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleGalleryUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length + galleryPreviews.length > 6) {
+      setErrorMessage('Maximum 6 gallery images allowed');
+      return;
+    }
+
+    setIsProcessingImage(true);
+    const newPreviews: string[] = [];
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        newPreviews.push(reader.result as string);
+        if (newPreviews.length === files.length) {
+          setGalleryFiles(prev => [...prev, ...files]);
+          setGalleryPreviews(prev => [...prev, ...newPreviews]);
+          setIsProcessingImage(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeGalleryImage = (index: number) => {
+    setGalleryFiles(prev => prev.filter((_, i) => i !== index));
+    setGalleryPreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // ✅ Function to combine 4 sections into single description
+  const combineBioSections = () => {
+    let description = '';
     
-    // Clean the phone number - remove all non-numeric except +
-    let phoneNumber = profile.contactInfo.trim();
-    
-    // Remove spaces, dashes, parentheses
-    phoneNumber = phoneNumber.replace(/[\s\-\(\)]/g, '');
-    
-    // If number starts with 0, remove it
-    if (phoneNumber.startsWith('0')) {
-      phoneNumber = phoneNumber.substring(1);
+    if (bioSections.aboutMe.trim()) {
+      description += `About Me: ${bioSections.aboutMe.trim()}\n\n`;
     }
     
-    // If number doesn't start with +, add India country code (+91)
-    if (!phoneNumber.startsWith('+')) {
-      // Check if already has 91 at start
-      if (phoneNumber.startsWith('91') && phoneNumber.length >= 12) {
-        phoneNumber = '+' + phoneNumber;
+    if (bioSections.interestsHobbies.trim()) {
+      description += `Interests & Hobbies: ${bioSections.interestsHobbies.trim()}\n\n`;
+    }
+    
+    if (bioSections.whatIOffer.trim()) {
+      description += `What I Offer: ${bioSections.whatIOffer.trim()}\n\n`;
+    }
+    
+    if (bioSections.valuesPrivacy.trim()) {
+      description += `Values & Privacy: ${bioSections.valuesPrivacy.trim()}`;
+    }
+    
+    return description.trim();
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentProfile) return;
+
+    // ✅ Combine 4 sections into single description
+    const combinedDescription = combineBioSections();
+
+    const formData = new FormData();
+    formData.append('name', currentProfile.name || '');
+    formData.append('age', (currentProfile.age || 18).toString());
+    formData.append('height', currentProfile.height || '');
+    formData.append('complexion', currentProfile.complexion || 'Medium');
+    formData.append('location', currentProfile.location || LOCATIONS[0]);
+    formData.append('description', combinedDescription); // ✅ Single combined description
+    formData.append('contactInfo', currentProfile.contactInfo || '');
+    formData.append('isFeatured', String(currentProfile.isFeatured || false));
+    // ✅ NOT sending aboutMe, interestsHobbies, etc. separately
+
+    if (mainImageFile) {
+      formData.append('mainImage', mainImageFile);
+    }
+
+    galleryFiles.forEach(file => {
+      formData.append('galleryImages', file);
+    });
+
+    // Debug log
+    console.log('Saving description:', combinedDescription);
+
+    setErrorMessage(null);
+    setIsSaving(true);
+    try {
+      if (currentProfile._id) {
+        await apiService.updateProfile(currentProfile._id, formData);
       } else {
-        phoneNumber = '+91' + phoneNumber;
+        await apiService.createProfile(formData);
       }
+      await loadProfiles();
+      setIsEditing(false);
+      setCurrentProfile(null);
+      setMainImageFile(null);
+      setGalleryFiles([]);
+      setMainPreview('');
+      setGalleryPreviews([]);
+      setBioSections({
+        aboutMe: '',
+        interestsHobbies: '',
+        whatIOffer: '',
+        valuesPrivacy: ''
+      });
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    } catch (error: any) {
+      console.error('Save error:', error);
+      setErrorMessage(error.message || 'Failed to save profile. Check console for details.');
+    } finally {
+      setIsSaving(false);
     }
-    
-    console.log('Formatted WhatsApp number:', phoneNumber);
-    
-    // Create WhatsApp URL with default message
-    const message = `Hi ${profile.name}, I found your profile on BelleDiscovery and would like to connect with you.`;
-    const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
-    
-    // Open in new tab
-    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
   };
-
-  // ✅ SIMPLIFIED phone number check
-  const isPhoneNumber = (contact: string) => {
-    const cleanContact = contact.replace(/\D/g, '');
-    return cleanContact.length >= 10;
-  };
-
-  // ✅ Format phone number for display
-  const formatPhoneNumber = (phone: string) => {
-    const cleaned = phone.replace(/\D/g, '');
-    
-    if (cleaned.length === 10) {
-      return `+91 ${cleaned.substring(0,5)} ${cleaned.substring(5)}`;
-    }
-    
-    return phone;
-  };
-
-  if (!profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-rose-300 border-t-rose-500 rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  // ✅ Check if any section has content
-  const hasBioSections = bioSections.aboutMe || bioSections.interestsHobbies || 
-                         bioSections.whatIOffer || bioSections.valuesPrivacy;
 
   return (
-    <div className="max-w-6xl mx-auto px-6 pt-28 pb-12">
-      {feedback && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-3 rounded-xl z-50">
-          {feedback.message}
+    <div className="max-w-7xl mx-auto px-4 pt-28 pb-12 sm:pt-32">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-8 md:mb-12">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-serif font-bold text-gray-900 mb-2">Manage Profiles</h1>
+          <p className="text-sm md:text-base text-gray-500">Edit, add or remove profile listings.</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleAddNew}
+          className="bg-rose-500 text-white px-6 md:px-8 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-rose-600 shadow-lg shadow-rose-100 w-full lg:w-auto justify-center transition-all active:scale-95"
+        >
+          <Plus className="w-5 h-5" />
+          Add New Profile
+        </button>
+      </div>
+
+      <div className="bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-4 md:p-6 border-b border-gray-50 flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="relative w-full md:w-96">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by name..."
+              className="w-full bg-gray-50 border border-gray-100 rounded-2xl pl-11 pr-4 py-3 focus:ring-2 focus:ring-rose-500 outline-none text-sm md:text-base transition-all"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="text-xs md:text-sm font-medium text-gray-500">
+            Total listings: <span className="font-bold text-gray-900">{filteredProfiles.length}</span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto w-full">
+          <table className="w-full text-left min-w-[700px]">
+            <thead>
+              <tr className="bg-gray-50/50">
+                <th className="px-6 py-5 text-xs font-bold text-gray-400 uppercase tracking-wider">Profile</th>
+                <th className="px-6 py-5 text-xs font-bold text-gray-400 uppercase tracking-wider">Details</th>
+                <th className="px-6 py-5 text-xs font-bold text-gray-400 uppercase tracking-wider text-center">Status</th>
+                <th className="px-6 py-5 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filteredProfiles.map(profile => (
+                <tr key={profile._id} className={`transition-all duration-300 ${deletingId === profile._id ? 'bg-red-50/80 scale-[0.99]' : 'hover:bg-rose-50/10'}`}>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-4">
+                      <img src={profile.imageUrl} className="w-12 h-12 rounded-xl object-cover shadow-sm shrink-0" alt={profile.name} />
+                      <div>
+                        <p className="font-bold text-sm md:text-base text-gray-900">{profile.name}</p>
+                        <p className="text-[10px] md:text-xs text-gray-500">{profile.location}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs md:text-sm font-medium text-gray-600">{profile.age} yrs • {profile.height}</p>
+                      <p className="text-[10px] md:text-xs text-gray-400">{profile.complexion} Complexion</p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex justify-center">
+                      {profile.isFeatured ? (
+                        <span className="bg-amber-100 text-amber-700 px-3 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 shadow-sm">
+                          <Star className="w-3 h-3 fill-current" />
+                          FEATURED
+                        </span>
+                      ) : (
+                        <span className="bg-gray-100 text-gray-500 px-3 py-1.5 rounded-full text-[10px] font-bold">
+                          STANDARD
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right min-w-[160px]">
+                    <div className="flex justify-end gap-2">
+                      {deletingId === profile._id ? (
+                        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-3">
+                          <button
+                            type="button"
+                            onClick={() => proceedDelete(profile._id)}
+                            className="px-3 py-2 bg-red-600 text-white text-[10px] font-black rounded-lg hover:bg-red-700 shadow-lg flex items-center gap-1 active:scale-90"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            CONFIRM
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingId(null)}
+                            className="px-3 py-2 bg-white border border-gray-200 text-gray-600 text-[10px] font-black rounded-lg hover:bg-gray-50 active:scale-90"
+                          >
+                            X
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(profile)}
+                            className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm active:scale-90"
+                            title="Edit"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingId(profile._id)}
+                            className="p-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm active:scale-90"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal for adding/editing */}
+      {isEditing && currentProfile && (
+        <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-5xl rounded-[2.5rem] shadow-2xl overflow-hidden max-h-[95vh] flex flex-col animate-in zoom-in duration-300">
+            <div className="p-6 md:p-8 border-b border-gray-100 flex justify-between items-center shrink-0">
+              <h2 className="text-2xl font-serif font-bold text-gray-900">
+                {currentProfile.name ? 'Edit Profile' : 'New Listing'}
+              </h2>
+              <button type="button" onClick={() => setIsEditing(false)} className="p-2 hover:bg-rose-50 text-rose-500 rounded-xl transition-all">
+                <X className="w-7 h-7" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 md:p-10">
+              {errorMessage && (
+                <div className="mb-8 p-5 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600">
+                  <AlertCircle className="w-6 h-6 shrink-0" />
+                  <p className="text-sm font-bold">{errorMessage}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                <div className="lg:col-span-4 space-y-8">
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Main Identity Image</label>
+                    <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-2xl border-4 border-white bg-gray-100">
+                      <img
+                        src={mainPreview || currentProfile.imageUrl}
+                        className={`w-full h-full object-cover transition-opacity ${isProcessingImage ? 'opacity-50' : 'opacity-100'}`}
+                        alt="Main"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => mainInputRef.current?.click()}
+                        className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/20 hover:bg-black/40 transition-all opacity-100 sm:opacity-0 sm:hover:opacity-100"
+                      >
+                        {isProcessingImage ? (
+                          <Loader2 className="w-10 h-10 animate-spin" />
+                        ) : (
+                          <>
+                            <Camera className="w-10 h-10 mb-2" />
+                            <span className="font-bold text-xs uppercase tracking-widest bg-black/40 px-3 py-1 rounded-full">Upload</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <input type="file" ref={mainInputRef} className="hidden" accept="image/*" onChange={handleMainPhotoUpload} />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">
+                      Gallery Photos ({galleryPreviews.length}/6)
+                    </label>
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      {galleryPreviews.map((img, idx) => (
+                        <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group border-2 border-gray-100">
+                          <img src={img} className="w-full h-full object-cover" alt={`Gallery ${idx + 1}`} />
+                          <button
+                            type="button"
+                            onClick={() => removeGalleryImage(idx)}
+                            className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-lg"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                      {galleryPreviews.length < 6 && (
+                        <button
+                          type="button"
+                          disabled={isSaving || isProcessingImage}
+                          onClick={() => galleryInputRef.current?.click()}
+                          className="aspect-square rounded-xl border-2 border-dashed border-rose-200 bg-rose-50 flex flex-col items-center justify-center text-rose-500 hover:bg-rose-100 transition-all disabled:opacity-50"
+                        >
+                          {isProcessingImage ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                        </button>
+                      )}
+                    </div>
+                    <input type="file" ref={galleryInputRef} className="hidden" accept="image/*" multiple onChange={handleGalleryUpload} />
+                  </div>
+
+                  <div className={`flex items-center gap-3 p-5 rounded-3xl border ${currentProfile.isFeatured ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-100'}`}>
+                    <input
+                      type="checkbox"
+                      id="isFeatured"
+                      className="w-6 h-6 rounded-lg accent-amber-500 cursor-pointer"
+                      checked={currentProfile.isFeatured || false}
+                      onChange={(e) => setCurrentProfile({ ...currentProfile, isFeatured: e.target.checked })}
+                    />
+                    <label htmlFor="isFeatured" className="text-sm font-bold text-gray-700 cursor-pointer flex-1">
+                      Feature this profile
+                    </label>
+                  </div>
+                </div>
+
+                <div className="lg:col-span-8 space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Name</label>
+                      <input
+                        type="text"
+                        required
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-rose-500 outline-none"
+                        value={currentProfile.name || ''}
+                        onChange={(e) => setCurrentProfile({ ...currentProfile, name: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Location</label>
+                      <select
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-rose-500 outline-none"
+                        value={currentProfile.location || ''}
+                        onChange={(e) => setCurrentProfile({ ...currentProfile, location: e.target.value })}
+                      >
+                        {LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Age</label>
+                      <input
+                        type="number"
+                        required
+                        min="18"
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-rose-500"
+                        value={currentProfile.age || ''}
+                        onChange={(e) => setCurrentProfile({ ...currentProfile, age: parseInt(e.target.value) || 18 })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Height</label>
+                      <input
+                        type="text"
+                        required
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-rose-500"
+                        value={currentProfile.height || ''}
+                        onChange={(e) => setCurrentProfile({ ...currentProfile, height: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Contact</label>
+                      <input
+                        type="text"
+                        required
+                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-rose-500"
+                        value={currentProfile.contactInfo || ''}
+                        onChange={(e) => setCurrentProfile({ ...currentProfile, contactInfo: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Complexion</label>
+                    <div className="flex flex-wrap gap-3">
+                      {COMPLEXIONS.map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setCurrentProfile({ ...currentProfile, complexion: c })}
+                          className={`px-6 py-3 rounded-xl text-xs font-bold border transition-all ${
+                            currentProfile.complexion === c ? 'bg-rose-500 text-white' : 'bg-white border-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ✅ 4-SECTION BIO FIELDS - Now using bioSections state */}
+                  <div className="space-y-6">
+                    <h3 className="text-lg font-bold text-gray-900 border-l-4 border-rose-500 pl-4">Profile Bio Sections</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Section 1: About Me */}
+                      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="bg-blue-100 p-2 rounded-full">
+                            <Users className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <label className="block text-xs font-black text-blue-600 uppercase tracking-widest">About Me</label>
+                        </div>
+                        <textarea
+                          rows={4}
+                          placeholder="Tell about yourself, your background, personality..."
+                          className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm"
+                          value={bioSections.aboutMe}
+                          onChange={(e) => setBioSections(prev => ({ ...prev, aboutMe: e.target.value }))}
+                        />
+                      </div>
+
+                      {/* Section 2: Interests & Hobbies */}
+                      <div className="bg-green-50 border border-green-100 rounded-2xl p-5">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="bg-green-100 p-2 rounded-full">
+                            <Heart className="w-4 h-4 text-green-600" />
+                          </div>
+                          <label className="block text-xs font-black text-green-600 uppercase tracking-widest">Interests & Hobbies</label>
+                        </div>
+                        <textarea
+                          rows={4}
+                          placeholder="Your hobbies, passions, things you enjoy..."
+                          className="w-full bg-white border border-green-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-green-500 outline-none resize-none text-sm"
+                          value={bioSections.interestsHobbies}
+                          onChange={(e) => setBioSections(prev => ({ ...prev, interestsHobbies: e.target.value }))}
+                        />
+                      </div>
+
+                      {/* Section 3: What I Offer */}
+                      <div className="bg-purple-50 border border-purple-100 rounded-2xl p-5">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="bg-purple-100 p-2 rounded-full">
+                            <Gift className="w-4 h-4 text-purple-600" />
+                          </div>
+                          <label className="block text-xs font-black text-purple-600 uppercase tracking-widest">What I Offer</label>
+                        </div>
+                        <textarea
+                          rows={4}
+                          placeholder="What you're looking for, what you can offer in a relationship..."
+                          className="w-full bg-white border border-purple-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-purple-500 outline-none resize-none text-sm"
+                          value={bioSections.whatIOffer}
+                          onChange={(e) => setBioSections(prev => ({ ...prev, whatIOffer: e.target.value }))}
+                        />
+                      </div>
+
+                      {/* Section 4: Values & Privacy */}
+                      <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="bg-amber-100 p-2 rounded-full">
+                            <Shield className="w-4 h-4 text-amber-600" />
+                          </div>
+                          <label className="block text-xs font-black text-amber-600 uppercase tracking-widest">Values & Privacy</label>
+                        </div>
+                        <textarea
+                          rows={4}
+                          placeholder="Your values, expectations, privacy preferences..."
+                          className="w-full bg-white border border-amber-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-amber-500 outline-none resize-none text-sm"
+                          value={bioSections.valuesPrivacy}
+                          onChange={(e) => setBioSections(prev => ({ ...prev, valuesPrivacy: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ✅ Preview of combined description */}
+                  {combineBioSections() && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5">
+                      <h4 className="text-sm font-bold text-gray-700 mb-3">Preview (Will be saved as single description):</h4>
+                      <div className="text-sm text-gray-600 whitespace-pre-line max-h-40 overflow-y-auto">
+                        {combineBioSections()}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                    <button
+                      type="submit"
+                      disabled={isSaving || isProcessingImage}
+                      className="flex-1 bg-gray-900 text-white py-5 rounded-3xl font-black text-lg hover:bg-rose-500 transition-all flex items-center justify-center gap-3 disabled:opacity-70"
+                    >
+                      {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-6 h-6" />}
+                      {isSaving ? 'Saving...' : 'Save Profile'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditing(false)}
+                      className="px-12 py-5 bg-gray-100 text-gray-500 rounded-3xl font-bold hover:bg-gray-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
-      <button onClick={() => navigate(-1)} className="flex gap-2 mb-6 text-gray-600 hover:text-black transition-colors">
-        <ArrowLeft /> Back
-      </button>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-        {/* IMAGES */}
-        <div>
-          <img 
-            src={activeImage} 
-            alt={profile.name}
-            className="w-full h-auto rounded-3xl shadow-xl object-cover"
-          />
-          <div className="grid grid-cols-4 gap-3 mt-4">
-            {gallery.map((img, i) => (
-              <img
-                key={i}
-                src={img}
-                alt={`${profile.name} - Image ${i+1}`}
-                onClick={() => setActiveImage(img)}
-                className={`cursor-pointer rounded-xl w-full h-24 object-cover ${
-                  activeImage === img ? 'ring-4 ring-rose-400' : 'opacity-80 hover:opacity-100'
-                }`}
-              />
-            ))}
-          </div>
+      {showSuccess && (
+        <div className="fixed bottom-6 right-6 z-[150] bg-gray-900 text-white px-8 py-4 rounded-[1.5rem] shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-right-4">
+          <CheckCircle className="w-6 h-6 text-green-400" />
+          <span className="font-black text-sm uppercase tracking-widest">Success</span>
         </div>
-
-        {/* DETAILS */}
-        <div>
-          <h1 className="text-4xl font-bold text-gray-900">{profile.name}, {profile.age}</h1>
-          <p className="flex items-center gap-2 mt-2 text-gray-500">
-            <MapPin size={18} /> {profile.location}
-          </p>
-
-          <div className="grid grid-cols-2 gap-4 mt-6 text-gray-700">
-            <div className="flex items-center gap-2">
-              <Ruler size={18} className="text-rose-500" />
-              <span className="font-medium">{profile.height}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Palette size={18} className="text-rose-500" />
-              <span className="font-medium">{profile.complexion}</span>
-            </div>
-          </div>
-
-          {/* ✅ DISPLAY 4 BIO SECTIONS */}
-          {hasBioSections ? (
-            <div className="mt-8 space-y-6">
-              {/* About Me Section */}
-              {bioSections.aboutMe && (
-                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="bg-blue-100 p-2 rounded-full">
-                      <User className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <h3 className="text-lg font-bold text-blue-700">About Me</h3>
-                  </div>
-                  <p className="text-gray-700 leading-relaxed">{bioSections.aboutMe}</p>
-                </div>
-              )}
-
-              {/* Interests & Hobbies Section */}
-              {bioSections.interestsHobbies && (
-                <div className="bg-green-50 border border-green-100 rounded-2xl p-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="bg-green-100 p-2 rounded-full">
-                      <Star className="w-5 h-5 text-green-600" />
-                    </div>
-                    <h3 className="text-lg font-bold text-green-700">Interests & Hobbies</h3>
-                  </div>
-                  <p className="text-gray-700 leading-relaxed">{bioSections.interestsHobbies}</p>
-                </div>
-              )}
-
-              {/* What I Offer Section */}
-              {bioSections.whatIOffer && (
-                <div className="bg-purple-50 border border-purple-100 rounded-2xl p-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="bg-purple-100 p-2 rounded-full">
-                      <Gift className="w-5 h-5 text-purple-600" />
-                    </div>
-                    <h3 className="text-lg font-bold text-purple-700">What I Offer</h3>
-                  </div>
-                  <p className="text-gray-700 leading-relaxed">{bioSections.whatIOffer}</p>
-                </div>
-              )}
-
-              {/* Values & Privacy Section */}
-              {bioSections.valuesPrivacy && (
-                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="bg-amber-100 p-2 rounded-full">
-                      <Shield className="w-5 h-5 text-amber-600" />
-                    </div>
-                    <h3 className="text-lg font-bold text-amber-700">Values & Privacy</h3>
-                  </div>
-                  <p className="text-gray-700 leading-relaxed">{bioSections.valuesPrivacy}</p>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* Fallback: Original single description */
-            <p className="mt-6 italic text-gray-600 bg-gray-50 p-4 rounded-xl">"{profile.description}"</p>
-          )}
-
-          {showContact ? (
-            <div className="mt-8 space-y-4">
-              {/* ✅ PINK BACKGROUND CONTACT CARD */}
-              <div className="bg-gradient-to-r from-pink-50 to-rose-50 border border-pink-200 p-6 rounded-2xl shadow-sm">
-                <h3 className="text-xl font-bold text-gray-800 mb-4">Contact Information</h3>
-                
-                {/* Phone Number Display */}
-                <div className="flex items-center gap-3 mb-6 p-4 bg-white rounded-xl shadow-sm">
-                  <div className="bg-pink-100 p-2 rounded-full">
-                    <Phone className="text-pink-600" size={24} />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Phone Number</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {formatPhoneNumber(profile.contactInfo)}
-                    </p>
-                  </div>
-                </div>
-                
-                {/* Action Buttons */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* Call Button - Pink Color */}
-                  <a 
-                    href={`tel:${profile.contactInfo.replace(/\D/g, '')}`}
-                    className="bg-pink-600 hover:bg-pink-700 text-white py-3 rounded-xl text-center font-semibold transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
-                  >
-                    <Phone size={20} />
-                    Call Now
-                  </a>
-                  
-                  {/* WhatsApp Button - Green Color */}
-                  {isPhoneNumber(profile.contactInfo) && (
-                    <button
-                      onClick={openWhatsApp}
-                      className="bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg"
-                    >
-                      <MessageSquare size={20} />
-                      <span className="font-semibold">WhatsApp</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-              
-              <p className="text-sm text-gray-500 text-center mt-4">
-                Please be respectful when contacting. Mention you found them on BelleDiscovery.
-              </p>
-            </div>
-          ) : (
-            // Request Contact Button (Also Pink)
-            <button
-              onClick={handleContactClick}
-              className="mt-8 w-full bg-gradient-to-r from-pink-600 to-rose-600 text-white py-4 rounded-xl hover:from-pink-700 hover:to-rose-700 transition-all shadow-lg hover:shadow-xl font-bold text-lg"
-            >
-              Get in Touch
-            </button>
-          )}
-
-          <div className="flex gap-4 mt-6">
-            <button 
-              onClick={toggleFavorite} 
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all ${
-                isFavorited 
-                  ? 'bg-pink-50 text-pink-600 border border-pink-200' 
-                  : 'border border-gray-300 hover:bg-gray-50 text-gray-700'
-              }`}
-            >
-              <Heart size={20} className={isFavorited ? 'fill-current' : ''} />
-              <span className="font-medium">{isFavorited ? 'Favorited' : 'Add to Favorites'}</span>
-            </button>
-            
-            <button
-              onClick={() => {
-                if (navigator.share) {
-                  navigator.share({
-                    title: `${profile.name} - BelleDiscovery`,
-                    text: `Check out ${profile.name}'s profile on BelleDiscovery`,
-                    url: window.location.href,
-                  });
-                } else {
-                  navigator.clipboard.writeText(window.location.href);
-                  setFeedback({ message: 'Link copied to clipboard!' });
-                  setTimeout(() => setFeedback(null), 2000);
-                }
-              }}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-gray-300 hover:bg-gray-50 text-gray-700 transition-all"
-            >
-              <Share2 size={20} />
-              <span className="font-medium">Share Profile</span>
-            </button>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
 
-export default ProfileDetail;
+export default ManageProfiles;
