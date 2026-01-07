@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
-  Plus, Search, Edit3, Trash2, X, Star, Save, CheckCircle, 
-  Image as Camera, AlertCircle, Loader2 
+  Plus, Search, Edit3, Trash2, X, Star,  Save, CheckCircle, 
+  Image as  Camera, AlertCircle, Loader2, Heart, Shield, Gift, Users
 } from 'lucide-react';
 import { apiService } from '../../services/apiService';
 import type { Profile } from '../../types';
@@ -23,6 +23,14 @@ const ManageProfiles: React.FC = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  
+  // ✅ Local state for 4 bio sections
+  const [bioSections, setBioSections] = useState({
+    aboutMe: '',
+    interestsHobbies: '',
+    whatIOffer: '',
+    valuesPrivacy: ''
+  });
   
   const mainInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -50,6 +58,43 @@ const ManageProfiles: React.FC = () => {
     );
   }, [profiles, searchTerm]);
 
+  // ✅ Function to parse description into 4 sections
+  const parseDescription = (description: string) => {
+    const sections = {
+      aboutMe: '',
+      interestsHobbies: '',
+      whatIOffer: '',
+      valuesPrivacy: ''
+    };
+
+    if (!description) return sections;
+
+    // Split by common patterns
+    const lines = description.split('\n');
+    let currentSection = '';
+    
+    for (const line of lines) {
+      if (line.includes('About Me:')) {
+        currentSection = 'aboutMe';
+        sections.aboutMe = line.replace('About Me:', '').trim();
+      } else if (line.includes('Interests & Hobbies:')) {
+        currentSection = 'interestsHobbies';
+        sections.interestsHobbies = line.replace('Interests & Hobbies:', '').trim();
+      } else if (line.includes('What I Offer:')) {
+        currentSection = 'whatIOffer';
+        sections.whatIOffer = line.replace('What I Offer:', '').trim();
+      } else if (line.includes('Values & Privacy:')) {
+        currentSection = 'valuesPrivacy';
+        sections.valuesPrivacy = line.replace('Values & Privacy:', '').trim();
+      } else if (currentSection && line.trim()) {
+        // Append to current section
+        sections[currentSection as keyof typeof sections] += ' ' + line.trim();
+      }
+    }
+
+    return sections;
+  };
+
   const handleAddNew = () => {
     setCurrentProfile({
       name: '',
@@ -65,6 +110,15 @@ const ManageProfiles: React.FC = () => {
       contactClicks: 0,
       createdAt: new Date().toISOString()
     });
+    
+    // Reset bio sections
+    setBioSections({
+      aboutMe: '',
+      interestsHobbies: '',
+      whatIOffer: '',
+      valuesPrivacy: ''
+    });
+    
     setMainPreview('');
     setGalleryPreviews([]);
     setMainImageFile(null);
@@ -75,6 +129,11 @@ const ManageProfiles: React.FC = () => {
 
   const handleEdit = (profile: Profile) => {
     setCurrentProfile({ ...profile });
+    
+    // ✅ Parse existing description into 4 sections
+    const parsedSections = parseDescription(profile.description || '');
+    setBioSections(parsedSections);
+    
     setMainPreview(profile.imageUrl);
     setGalleryPreviews(profile.galleryImages || []);
     setMainImageFile(null);
@@ -137,9 +196,35 @@ const ManageProfiles: React.FC = () => {
     setGalleryPreviews(prev => prev.filter((_, i) => i !== index));
   };
 
+  // ✅ Function to combine 4 sections into single description
+  const combineBioSections = () => {
+    let description = '';
+    
+    if (bioSections.aboutMe.trim()) {
+      description += `About Me: ${bioSections.aboutMe.trim()}\n\n`;
+    }
+    
+    if (bioSections.interestsHobbies.trim()) {
+      description += `Interests & Hobbies: ${bioSections.interestsHobbies.trim()}\n\n`;
+    }
+    
+    if (bioSections.whatIOffer.trim()) {
+      description += `What I Offer: ${bioSections.whatIOffer.trim()}\n\n`;
+    }
+    
+    if (bioSections.valuesPrivacy.trim()) {
+      description += `Values & Privacy: ${bioSections.valuesPrivacy.trim()}`;
+    }
+    
+    return description.trim();
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentProfile) return;
+
+    // ✅ Combine 4 sections into single description
+    const combinedDescription = combineBioSections();
 
     const formData = new FormData();
     formData.append('name', currentProfile.name || '');
@@ -147,9 +232,10 @@ const ManageProfiles: React.FC = () => {
     formData.append('height', currentProfile.height || '');
     formData.append('complexion', currentProfile.complexion || 'Medium');
     formData.append('location', currentProfile.location || LOCATIONS[0]);
-    formData.append('description', currentProfile.description || '');
+    formData.append('description', combinedDescription); // ✅ Single combined description
     formData.append('contactInfo', currentProfile.contactInfo || '');
     formData.append('isFeatured', String(currentProfile.isFeatured || false));
+    // ✅ NOT sending aboutMe, interestsHobbies, etc. separately
 
     if (mainImageFile) {
       formData.append('mainImage', mainImageFile);
@@ -158,6 +244,9 @@ const ManageProfiles: React.FC = () => {
     galleryFiles.forEach(file => {
       formData.append('galleryImages', file);
     });
+
+    // Debug log
+    console.log('Saving description:', combinedDescription);
 
     setErrorMessage(null);
     setIsSaving(true);
@@ -174,10 +263,17 @@ const ManageProfiles: React.FC = () => {
       setGalleryFiles([]);
       setMainPreview('');
       setGalleryPreviews([]);
+      setBioSections({
+        aboutMe: '',
+        interestsHobbies: '',
+        whatIOffer: '',
+        valuesPrivacy: ''
+      });
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
     } catch (error: any) {
-      setErrorMessage(error.message || 'Failed to save profile.');
+      console.error('Save error:', error);
+      setErrorMessage(error.message || 'Failed to save profile. Check console for details.');
     } finally {
       setIsSaving(false);
     }
@@ -478,16 +574,90 @@ const ManageProfiles: React.FC = () => {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Bio</label>
-                    <textarea
-                      rows={5}
-                      required
-                      className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-rose-500 outline-none resize-none"
-                      value={currentProfile.description || ''}
-                      onChange={(e) => setCurrentProfile({ ...currentProfile, description: e.target.value })}
-                    />
+                  {/* ✅ 4-SECTION BIO FIELDS - Now using bioSections state */}
+                  <div className="space-y-6">
+                    <h3 className="text-lg font-bold text-gray-900 border-l-4 border-rose-500 pl-4">Profile Bio Sections</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Section 1: About Me */}
+                      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="bg-blue-100 p-2 rounded-full">
+                            <Users className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <label className="block text-xs font-black text-blue-600 uppercase tracking-widest">About Me</label>
+                        </div>
+                        <textarea
+                          rows={4}
+                          placeholder="Tell about yourself, your background, personality..."
+                          className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm"
+                          value={bioSections.aboutMe}
+                          onChange={(e) => setBioSections(prev => ({ ...prev, aboutMe: e.target.value }))}
+                        />
+                      </div>
+
+                      {/* Section 2: Interests & Hobbies */}
+                      <div className="bg-green-50 border border-green-100 rounded-2xl p-5">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="bg-green-100 p-2 rounded-full">
+                            <Heart className="w-4 h-4 text-green-600" />
+                          </div>
+                          <label className="block text-xs font-black text-green-600 uppercase tracking-widest">Interests & Hobbies</label>
+                        </div>
+                        <textarea
+                          rows={4}
+                          placeholder="Your hobbies, passions, things you enjoy..."
+                          className="w-full bg-white border border-green-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-green-500 outline-none resize-none text-sm"
+                          value={bioSections.interestsHobbies}
+                          onChange={(e) => setBioSections(prev => ({ ...prev, interestsHobbies: e.target.value }))}
+                        />
+                      </div>
+
+                      {/* Section 3: What I Offer */}
+                      <div className="bg-purple-50 border border-purple-100 rounded-2xl p-5">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="bg-purple-100 p-2 rounded-full">
+                            <Gift className="w-4 h-4 text-purple-600" />
+                          </div>
+                          <label className="block text-xs font-black text-purple-600 uppercase tracking-widest">What I Offer</label>
+                        </div>
+                        <textarea
+                          rows={4}
+                          placeholder="What you're looking for, what you can offer in a relationship..."
+                          className="w-full bg-white border border-purple-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-purple-500 outline-none resize-none text-sm"
+                          value={bioSections.whatIOffer}
+                          onChange={(e) => setBioSections(prev => ({ ...prev, whatIOffer: e.target.value }))}
+                        />
+                      </div>
+
+                      {/* Section 4: Values & Privacy */}
+                      <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="bg-amber-100 p-2 rounded-full">
+                            <Shield className="w-4 h-4 text-amber-600" />
+                          </div>
+                          <label className="block text-xs font-black text-amber-600 uppercase tracking-widest">Values & Privacy</label>
+                        </div>
+                        <textarea
+                          rows={4}
+                          placeholder="Your values, expectations, privacy preferences..."
+                          className="w-full bg-white border border-amber-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-amber-500 outline-none resize-none text-sm"
+                          value={bioSections.valuesPrivacy}
+                          onChange={(e) => setBioSections(prev => ({ ...prev, valuesPrivacy: e.target.value }))}
+                        />
+                      </div>
+                    </div>
                   </div>
+
+                  {/* ✅ Preview of combined description */}
+                  {combineBioSections() && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5">
+                      <h4 className="text-sm font-bold text-gray-700 mb-3">Preview (Will be saved as single description):</h4>
+                      <div className="text-sm text-gray-600 whitespace-pre-line max-h-40 overflow-y-auto">
+                        {combineBioSections()}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex flex-col sm:flex-row gap-4 pt-4">
                     <button
