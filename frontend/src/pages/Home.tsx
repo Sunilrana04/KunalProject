@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Search, MapPin, ArrowRight, Star, ShieldCheck, Zap, Users } from 'lucide-react';
+import { Search, MapPin, ArrowRight,  ShieldCheck, Zap, Users } from 'lucide-react';
 import { apiService } from '../services/apiService';
 import ProfileCard from '../components/ProfileCard';
 import { LOCATIONS } from '../constants';
