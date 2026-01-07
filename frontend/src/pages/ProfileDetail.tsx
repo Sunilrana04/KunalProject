@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   MapPin,
-  Phone,
   MessageSquare,
   Share2,
   Heart,
